@@ -309,52 +309,45 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Helper functions to play sound client-side via Web Audio API
+# Helper functions to play sound client-side via explicit HTML5 Audio play
 def trigger_html_alarm(audio_box):
-    js_code = """
-        <img src="x" onerror="
-            if (!window.sirenCtx) {
-                window.sirenCtx = new (window.AudioContext || window.webkitAudioContext)();
-            }
-            if (!window.sirenInterval) {
-                window.sirenToggle = false;
-                window.sirenInterval = setInterval(() => {
-                    try {
-                        if (window.sirenCtx.state === 'suspended') {
-                            window.sirenCtx.resume();
-                        }
-                        const osc = window.sirenCtx.createOscillator();
-                        const gain = window.sirenCtx.createGain();
-                        osc.connect(gain);
-                        gain.connect(window.sirenCtx.destination);
-                        window.sirenToggle = !window.sirenToggle;
-                        osc.type = 'sine';
-                        osc.frequency.value = window.sirenToggle ? 950 : 700;
-                        osc.start();
-                        gain.gain.setValueAtTime(0.2, window.sirenCtx.currentTime);
-                        gain.gain.exponentialRampToValueAtTime(0.01, window.sirenCtx.currentTime + 0.45);
-                        setTimeout(() => {
-                            try { osc.stop(); } catch(e) {}
-                        }, 450);
-                    } catch (err) {
-                        console.error('Siren error:', err);
-                    }
-                }, 500);
-            }
-        " style="display:none;"/>
-    """
-    audio_box.markdown(js_code, unsafe_allow_html=True)
+    if os.path.exists(ALARM_PATH):
+        try:
+            with open(ALARM_PATH, "rb") as f:
+                audio_bytes = f.read()
+            audio_b64 = base64.b64encode(audio_bytes).decode()
+            audio_html = f"""
+                <audio loop id="alarm-audio" style="display:none;">
+                <source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">
+                </audio>
+                <img src="x" onerror="
+                    try {{
+                        const audio = document.getElementById('alarm-audio');
+                        if (audio) {{
+                            audio.play().catch(err => console.log('Audio play blocked:', err));
+                        }}
+                    }} catch(e) {{}}
+                " style="display:none;"/>
+            """
+            audio_box.markdown(audio_html, unsafe_allow_html=True)
+        except Exception:
+            pass
 
 def stop_html_alarm(audio_box):
     js_code = """
         <img src="x" onerror="
-            if (window.sirenInterval) {
-                clearInterval(window.sirenInterval);
-                window.sirenInterval = null;
-            }
+            try {
+                const audio = document.getElementById('alarm-audio');
+                if (audio) {
+                    audio.pause();
+                    audio.currentTime = 0;
+                }
+            } catch(e) {}
         " style="display:none;"/>
     """
     audio_box.markdown(js_code, unsafe_allow_html=True)
+    time.sleep(0.05)
+    audio_box.empty()
 
 # Log state management
 if "event_log" not in st.session_state:
@@ -495,6 +488,13 @@ with st.sidebar:
     
     is_muted = st.checkbox("🔇 Mute Audio Siren", value=False)
     
+    st.subheader("🔊 Audio Test")
+    test_audio_box = st.empty()
+    if st.button("🔊 Test Siren Sound"):
+        trigger_html_alarm(test_audio_box)
+        time.sleep(3.0)
+        stop_html_alarm(test_audio_box)
+        
     st.markdown("---")
     
     # Project Information
