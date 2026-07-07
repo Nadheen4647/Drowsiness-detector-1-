@@ -1,0 +1,372 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Driver Drowsiness Detection System</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="styles.css">
+    
+    <!-- MediaPipe Face Mesh CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js" crossorigin="anonymous"></script>
+</head>
+<body>
+    <div class="glow-bg"></div>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="main-header">
+            <div class="header-logo">
+                <div class="pulse-dot"></div>
+                <h1>AI-DRIVE EYEGUARD</h1>
+            </div>
+            <div class="system-status">
+                <span class="status-label">SYSTEM STATE:</span>
+                <span id="system-badge" class="badge-safe">ACTIVE / SAFE</span>
+            </div>
+        </header>
+
+        <!-- Main Dashboard Layout -->
+        <main class="dashboard-grid">
+            
+            <!-- Left Panel: Controls & Metrics -->
+            <section class="panel panel-left">
+                <div class="panel-header">
+                    <h2>System Diagnostics</h2>
+                </div>
+                
+                <!-- Live Gauges / Metrics -->
+                <div class="metrics-grid">
+                    <div class="metric-card" id="ear-card">
+                        <div class="metric-header">
+                            <span>Eye Aspect Ratio (EAR)</span>
+                            <span class="metric-value" id="ear-value">0.32</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar progress-safe" id="ear-bar" style="width: 90%;"></div>
+                        </div>
+                        <div class="metric-footer">
+                            <span>Min Threshold: <span id="ear-thresh-display">0.20</span></span>
+                            <span id="ear-status" class="status-text-safe">Normal</span>
+                        </div>
+                    </div>
+                    
+                    <div class="metric-card" id="mar-card">
+                        <div class="metric-header">
+                            <span>Mouth Aspect Ratio (MAR)</span>
+                            <span class="metric-value" id="mar-value">0.15</span>
+                        </div>
+                        <div class="progress-bar-container">
+                            <div class="progress-bar progress-safe" id="mar-bar" style="width: 25%;"></div>
+                        </div>
+                        <div class="metric-footer">
+                            <span>Max Threshold: <span id="mar-thresh-display">0.65</span></span>
+                            <span id="mar-status" class="status-text-safe">Resting</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Feed Controls -->
+                <div class="controls-card">
+                    <h3>Input Control</h3>
+                    <div class="button-group">
+                        <button id="btn-camera" class="btn btn-primary">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
+                            Start Camera
+                        </button>
+                        <button id="btn-simulate" class="btn btn-secondary btn-active">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                            Simulator Mode
+                        </button>
+                    </div>
+                    <div class="info-note" id="camera-note">
+                        * Camera processing requires camera permission and is executed purely local-client side.
+                    </div>
+                </div>
+
+                <!-- Parameters Settings -->
+                <div class="settings-card">
+                    <h3>Calibration Settings</h3>
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <span>EAR Alert Threshold</span>
+                            <span id="val-ear-threshold">0.20</span>
+                        </div>
+                        <input type="range" id="slider-ear-threshold" min="0.15" max="0.30" step="0.01" value="0.20">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <span>MAR Yawn Threshold</span>
+                            <span id="val-mar-threshold">0.65</span>
+                        </div>
+                        <input type="range" id="slider-mar-threshold" min="0.50" max="0.80" step="0.01" value="0.65">
+                    </div>
+                    <div class="setting-item">
+                        <div class="setting-label">
+                            <span>Drowsiness Trigger Delay</span>
+                            <span id="val-trigger-delay">1.5s</span>
+                        </div>
+                        <input type="range" id="slider-trigger-delay" min="0.5" max="3.0" step="0.1" value="1.5">
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Center Panel: Video Stream & Overlay Canvas -->
+            <section class="panel panel-center">
+                <div class="video-container">
+                    <div class="alarm-overlay" id="alarm-overlay">
+                        <div class="alarm-alert-text">WARNING: DROWSINESS DETECTED!</div>
+                        <div class="alarm-sub-text">SOUND TRIPPED - TAKE A BREAK</div>
+                    </div>
+                    
+                    <!-- Hidden video element for processing -->
+                    <video id="webcam" autoplay muted playsinline style="display: none;"></video>
+                    
+                    <!-- Visual feedback layer -->
+                    <canvas id="overlay-canvas"></canvas>
+                    
+                    <!-- Loading Overlay -->
+                    <div class="loading-overlay" id="loading-overlay" style="display: none;">
+                        <div class="loader"></div>
+                        <span>Initializing AI Landmarker...</span>
+                    </div>
+
+                    <!-- Simulator Guide / Manual Overrides -->
+                    <div class="simulator-panel" id="simulator-panel">
+                        <div class="simulator-header">
+                            <span>Interactive Simulator Interface</span>
+                            <div class="scenario-selector">
+                                <label for="scenario-select">Demo Preset:</label>
+                                <select id="scenario-select">
+                                    <option value="alert">Normal (Alert Driver)</option>
+                                    <option value="drowsy">Drowsy / Micro-sleep</option>
+                                    <option value="yawning">Fatigued (Yawning)</option>
+                                    <option value="manual">Manual Overrides</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="simulator-controls" id="manual-controls" style="display: none;">
+                            <div class="sim-control-item">
+                                <label>Eyelid Closure (Open &harr; Closed)</label>
+                                <input type="range" id="sim-eye-slider" min="0" max="100" value="100">
+                            </div>
+                            <div class="sim-control-item">
+                                <label>Mouth Open Level (Closed &harr; Yawn)</label>
+                                <input type="range" id="sim-mouth-slider" min="0" max="100" value="0">
+                            </div>
+                        </div>
+                        <div class="simulator-tip" id="simulator-tip">
+                            Running auto-simulation. Switch preset or select "Manual Overrides" to control face features manually!
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Real-time HUD Status Indicators -->
+                <div class="hud-status">
+                    <div class="hud-item" id="hud-eye">
+                        <div class="hud-indicator active"></div>
+                        <span class="hud-text">EYES: OPEN</span>
+                    </div>
+                    <div class="hud-item" id="hud-mouth">
+                        <div class="hud-indicator active"></div>
+                        <span class="hud-text">MOUTH: NORMAL</span>
+                    </div>
+                    <div class="hud-item" id="hud-fps">
+                        <span class="hud-text">FPS: 30</span>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Right Panel: Telemetry Charts & Activity Console -->
+            <section class="panel panel-right">
+                <div class="panel-header">
+                    <h2>Real-Time Telemetry</h2>
+                </div>
+                
+                <!-- Canvas-based line graphs -->
+                <div class="charts-container">
+                    <div class="chart-box">
+                        <div class="chart-header">
+                            <span>EAR Tracking History</span>
+                            <span class="chart-legend" style="color: #00f2fe;">EAR</span>
+                        </div>
+                        <canvas id="chart-ear" height="110"></canvas>
+                    </div>
+                    
+                    <div class="chart-box">
+                        <div class="chart-header">
+                            <span>MAR Tracking History</span>
+                            <span class="chart-legend" style="color: #ff0844;">MAR</span>
+                        </div>
+                        <canvas id="chart-mar" height="110"></canvas>
+                    </div>
+                </div>
+
+                <!-- Event Logger Terminal -->
+                <div class="console-box">
+                    <div class="console-header">
+                        <span>System Logs</span>
+                        <button id="btn-clear-log">Clear</button>
+                    </div>
+                    <div class="console-output" id="console-logs">
+                        <div class="log-line text-info">[00:00:00] Web interface loaded. Ready.</div>
+                        <div class="log-line text-warning">[00:00:00] Click "Start Camera" or interact with "Simulator" to test.</div>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <!-- Theoretical Section - Tabs -->
+        <section class="theory-section">
+            <div class="theory-nav">
+                <button class="tab-btn active" data-tab="tab-overview">System Overview</button>
+                <button class="tab-btn" data-tab="tab-math">Mathematical Formulas</button>
+                <button class="tab-btn" data-tab="tab-architecture">System Architecture</button>
+                <button class="tab-btn" data-tab="tab-deeplearning">CNN Classification</button>
+            </div>
+            
+            <div class="theory-content">
+                <!-- Overview Tab -->
+                <div class="tab-pane active" id="tab-overview">
+                    <div class="theory-grid">
+                        <div class="theory-card">
+                            <h3>Project Objective</h3>
+                            <p>Develop a non-intrusive safety system that actively reads facial features to prevent fatigue-related road accidents. By combining deep learning classifications with strict mathematical aspect ratios, the system accurately alerts drivers upon the first indicators of exhaustion.</p>
+                        </div>
+                        <div class="theory-card">
+                            <h3>Key Features</h3>
+                            <ul>
+                                <li><strong>Geometric Ratio Analysis:</strong> Employs EAR (Eye Aspect Ratio) and MAR (Mouth Aspect Ratio) for physical dimension tracking.</li>
+                                <li><strong>Deep Learning Validation:</strong> Cross-checks geometric estimations with a CNN classifier to verify eye-state closures.</li>
+                                <li><strong>Temporal Buffer:</strong> Integrates an alert delay filter to avoid triggering on standard blinking gestures.</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Mathematical Formulas Tab -->
+                <div class="tab-pane" id="tab-math">
+                    <div class="math-container">
+                        <div class="math-block">
+                            <h3>Eye Aspect Ratio (EAR)</h3>
+                            <div class="formula-box" style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; padding: 12px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); margin: 10px 0;">
+                                EAR = (||p2 - p6|| + ||p3 - p5||) / (2 * ||p1 - p4||)
+                            </div>
+                            <p>EAR computes the ratio of eye height to eye width using six coordinates surrounding the eyelids. Under normal driving conditions, the ratio is high and stable (~0.25 to 0.35). As sleepiness or micro-sleep takes over, the vertical distance drops toward zero, driving the ratio down (~&lt;0.20).</p>
+                        </div>
+                        <div class="math-block">
+                            <h3>Mouth Aspect Ratio (MAR)</h3>
+                            <div class="formula-box" style="font-family: 'JetBrains Mono', monospace; font-size: 1.1rem; padding: 12px; border-radius: 6px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); margin: 10px 0;">
+                                MAR = (||p51 - p59|| + ||p52 - p58|| + ||p53 - p57||) / (2 * ||p49 - p55||)
+                            </div>
+                            <p>MAR measures mouth open distance using vertical and horizontal outer lip points. When yawning, the vertical lips stretch apart, resulting in a distinct, high-amplitude MAR spike (often reaching &gt;0.65 for several consecutive seconds) that can easily be differentiated from normal talking or singing.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- System Architecture Tab -->
+                <div class="tab-pane" id="tab-architecture">
+                    <div class="arch-flow">
+                        <div class="arch-step">
+                            <div class="step-num">1</div>
+                            <h4>Capture Input</h4>
+                            <p>Extract frames in real-time from an RGB or Near-Infrared camera stream at 30 FPS.</p>
+                        </div>
+                        <div class="arch-step">
+                            <div class="step-num">2</div>
+                            <h4>Preprocess</h4>
+                            <p>Convert to grayscale and run histogram equalization to neutralize harsh shadows.</p>
+                        </div>
+                        <div class="arch-step">
+                            <div class="step-num">3</div>
+                            <h4>Landmarks</h4>
+                            <p>Detect facial bounding boxes and identify coordinates (eyes, mouth contour).</p>
+                        </div>
+                        <div class="arch-step">
+                            <div class="step-num">4</div>
+                            <h4>Analyze & Classify</h4>
+                            <p>Calculate EAR/MAR ratios and feed cropped eye image into CNN state classification.</p>
+                        </div>
+                        <div class="arch-step">
+                            <div class="step-num">5</div>
+                            <h4>Alarm Trigger</h4>
+                            <p>Evaluate state against triggers. Engage audio buzzer if closure exceeds temporal delay thresholds.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CNN Classification Tab -->
+                <div class="tab-pane" id="tab-deeplearning">
+                    <div class="cnn-details">
+                        <div class="cnn-arch-card">
+                            <h3>CNN Eye-State Binary Classifier</h3>
+                            <p>To eliminate calibration drift from geometric parameters alone, the system feeds cropped bounding boxes of the eyes to a Convolutional Neural Network (CNN) trained on the <strong>MRL Eye Dataset</strong> (84,000+ samples).</p>
+                            
+                            <table class="cnn-table">
+                                <thead>
+                                    <tr>
+                                        <th>Layer Type</th>
+                                        <th>Output Shape</th>
+                                        <th>Details / Parameters</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>Input Layer</td>
+                                        <td>(64, 64, 1)</td>
+                                        <td>Grayscale eye crop, normalized between [0, 1]</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Conv2D + ReLU</td>
+                                        <td>(62, 62, 32)</td>
+                                        <td>3x3 kernel size, extracts low-level edge features</td>
+                                    </tr>
+                                    <tr>
+                                        <td>MaxPooling2D</td>
+                                        <td>(31, 31, 32)</td>
+                                        <td>2x2 downsampling to reduce parameters</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Conv2D + ReLU</td>
+                                        <td>(29, 29, 64)</td>
+                                        <td>3x3 kernel size, extracts detailed shape profiles</td>
+                                    </tr>
+                                    <tr>
+                                        <td>MaxPooling2D</td>
+                                        <td>(14, 14, 64)</td>
+                                        <td>2x2 downsampling</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Flatten + Dropout</td>
+                                        <td>(12544)</td>
+                                        <td>Flattens to vector; 50% dropout rate prevents overfitting</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Dense + ReLU</td>
+                                        <td>(128)</td>
+                                        <td>Fully connected reasoning layer</td>
+                                    </tr>
+                                    <tr>
+                                        <td>Dense + Sigmoid</td>
+                                        <td>(1)</td>
+                                        <td>Binary prediction: Open vs Closed (Threshold at 0.5)</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Footer -->
+        <footer class="main-footer">
+            <p>Real-Time Driver Drowsiness Detection System Theory and Interactive Showcase | Built for Academic Reference</p>
+        </footer>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>
