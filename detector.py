@@ -70,7 +70,7 @@ class FaceLandmarkDetector:
             running_mode=mp_vision.RunningMode.IMAGE,
             num_faces=1,
             min_face_detection_confidence=0.50,
-            min_face_presence_score=0.50,
+            min_face_presence_confidence=0.50,
             min_tracking_confidence=0.50,
         )
         self._landmarker = mp_vision.FaceLandmarker.create_from_options(options)
