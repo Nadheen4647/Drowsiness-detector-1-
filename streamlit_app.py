@@ -309,21 +309,52 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# Helper function to play sound client-side
+# Helper functions to play sound client-side via Web Audio API
 def trigger_html_alarm(audio_box):
-    if os.path.exists(ALARM_PATH):
-        try:
-            with open(ALARM_PATH, "rb") as f:
-                audio_bytes = f.read()
-            audio_b64 = base64.b64encode(audio_bytes).decode()
-            audio_html = f"""
-                <audio autoplay loop id="alarm-audio" style="display:none;">
-                <source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">
-                </audio>
-            """
-            audio_box.markdown(audio_html, unsafe_allow_html=True)
-        except Exception:
-            pass
+    js_code = """
+        <img src="x" onerror="
+            if (!window.sirenCtx) {
+                window.sirenCtx = new (window.AudioContext || window.webkitAudioContext)();
+            }
+            if (!window.sirenInterval) {
+                window.sirenToggle = false;
+                window.sirenInterval = setInterval(() => {
+                    try {
+                        if (window.sirenCtx.state === 'suspended') {
+                            window.sirenCtx.resume();
+                        }
+                        const osc = window.sirenCtx.createOscillator();
+                        const gain = window.sirenCtx.createGain();
+                        osc.connect(gain);
+                        gain.connect(window.sirenCtx.destination);
+                        window.sirenToggle = !window.sirenToggle;
+                        osc.type = 'sine';
+                        osc.frequency.value = window.sirenToggle ? 950 : 700;
+                        osc.start();
+                        gain.gain.setValueAtTime(0.2, window.sirenCtx.currentTime);
+                        gain.gain.exponentialRampToValueAtTime(0.01, window.sirenCtx.currentTime + 0.45);
+                        setTimeout(() => {
+                            try { osc.stop(); } catch(e) {}
+                        }, 450);
+                    } catch (err) {
+                        console.error('Siren error:', err);
+                    }
+                }, 500);
+            }
+        " style="display:none;"/>
+    """
+    audio_box.markdown(js_code, unsafe_allow_html=True)
+
+def stop_html_alarm(audio_box):
+    js_code = """
+        <img src="x" onerror="
+            if (window.sirenInterval) {
+                clearInterval(window.sirenInterval);
+                window.sirenInterval = null;
+            }
+        " style="display:none;"/>
+    """
+    audio_box.markdown(js_code, unsafe_allow_html=True)
 
 # Log state management
 if "event_log" not in st.session_state:
@@ -607,7 +638,7 @@ with tab_webrtc:
                             alarm_currently_playing = True
                     else:
                         if alarm_currently_playing:
-                            audio_box.empty()
+                            stop_html_alarm(audio_box)
                             alarm_currently_playing = False
                         
                     # 4. Render metrics
