@@ -310,18 +310,18 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Helper function to play sound client-side
-def trigger_html_alarm():
+def trigger_html_alarm(audio_box):
     if os.path.exists(ALARM_PATH):
         try:
             with open(ALARM_PATH, "rb") as f:
                 audio_bytes = f.read()
             audio_b64 = base64.b64encode(audio_bytes).decode()
             audio_html = f"""
-                <audio autoplay loop id="alarm-audio">
+                <audio autoplay loop id="alarm-audio" style="display:none;">
                 <source src="data:audio/wav;base64,{audio_b64}" type="audio/wav">
                 </audio>
             """
-            st.markdown(audio_html, unsafe_allow_html=True)
+            audio_box.markdown(audio_html, unsafe_allow_html=True)
         except Exception:
             pass
 
@@ -531,6 +531,7 @@ with tab_webrtc:
         status_box = st.empty()
         confidence_box = st.empty()
         metrics_table_box = st.empty()
+        audio_box = st.empty()
         
         st.markdown("---")
         st.subheader("📜 System Event Log")
@@ -549,6 +550,7 @@ with tab_webrtc:
         
         # Run loop to pull metrics and update Streamlit UI in real-time
         last_prediction = "Alert"
+        alarm_currently_playing = False
         try:
             while ctx.state.playing:
                 proc = ctx.video_processor
@@ -597,9 +599,16 @@ with tab_webrtc:
                     conf_val = int(confidence * 100) if face_present else 0
                     confidence_box.markdown(f"**Classification Confidence: {conf_val}%**")
                     
-                    # 3. Play audio alarm if drowsy
-                    if face_present and prediction == "Drowsy" and confidence >= alarm_thresh and not is_muted:
-                        trigger_html_alarm()
+                    # 3. Play/stop audio alarm
+                    should_alarm = (face_present and prediction == "Drowsy" and confidence >= alarm_thresh and not is_muted)
+                    if should_alarm:
+                        if not alarm_currently_playing:
+                            trigger_html_alarm(audio_box)
+                            alarm_currently_playing = True
+                    else:
+                        if alarm_currently_playing:
+                            audio_box.empty()
+                            alarm_currently_playing = False
                         
                     # 4. Render metrics
                     metrics_table_box.markdown(f"""
